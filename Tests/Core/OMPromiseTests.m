@@ -1052,6 +1052,70 @@
     XCTAssertEqual(all.state, OMPromiseStateFailed, @"All should have failed");
 }
 
+- (void)testCollectEmpty {
+    OMPromise *collected = [OMPromise collect:@[]];
+    
+    XCTAssertEqual(collected.state, OMPromiseStateFulfilled, @"Collected should be fulfilled");
+    XCTAssertTrue([collected.result isEqualToArray:@[]], @"Collected should cumulate all results");
+}
+
+- (void)testCollect {
+    OMDeferred *deferred1 = [OMDeferred deferred];
+    OMDeferred *deferred2 = [OMDeferred deferred];
+    
+    OMPromise *collected = [OMPromise collect:@[deferred1.promise, deferred2.promise, [OMPromise promiseWithResult:nil]]];
+    
+    XCTAssertEqualWithAccuracy(collected.progress, 1/3.f, FLT_EPSILON, @"Equal distribution of workload");
+    
+    [deferred1 progress:.5f];
+    XCTAssertEqualWithAccuracy(collected.progress, 1/2.f, FLT_EPSILON, @"Equal distribution of workload");
+    
+    [deferred1 fail:self.error];
+    XCTAssertEqual(collected.state, OMPromiseStateUnfulfilled, @"Collected should not have failed");
+    XCTAssertEqualWithAccuracy(collected.progress, 2/3.f, FLT_EPSILON, @"Equal distribution of workload");
+    
+    [deferred2 progress:.5f];
+    XCTAssertEqualWithAccuracy(collected.progress, 5/6.f, FLT_EPSILON, @"Equal distribution of workload");
+    
+    [deferred2 fulfil:self.result];
+    XCTAssertEqual(collected.state, OMPromiseStateFulfilled, @"Collected should be fulfilled");
+    XCTAssertTrue([collected.result isEqualToArray:(@[self.error, self.result, NSNull.null])], @"Collected should cumulate all results");
+}
+
+#pragma mark - Testing
+
+- (void)testWaitForResultWithin {
+    OMPromise *failed = [OMPromise promiseWithError:self.error];
+    XCTAssertThrows([failed waitForResultWithin:10.], @"Waiting on a failed promise should throw");
+    
+    OMPromise *fulfilled = [OMPromise promiseWithResult:self.result];
+    XCTAssertEqual([fulfilled waitForResultWithin:10.], self.result, @"Should yield result of fulfilled promise");
+    
+    OMPromise *promise = [OMPromise promiseWithResult:self.result2 after:3.5];
+    XCTAssertThrows([promise waitForResultWithin:3.], @"Fulfilling not in time should throw");
+    
+    NSDate *tic = [NSDate date];
+    OMPromise *promise2 = [OMPromise promiseWithResult:self.result2 after:3.5];
+    XCTAssertEqual([promise2 waitForResultWithin:4.], self.result2, @"Should yield result of fulfilled promise");
+    XCTAssertEqualWithAccuracy(-tic.timeIntervalSinceNow, 3.5, .15, @"Should be more or less exact in timing");
+}
+
+- (void)testWaitForErrorWithin {
+    OMPromise *fulfilled = [OMPromise promiseWithResult:self.result];
+    XCTAssertThrows([fulfilled waitForErrorWithin:10.], @"Waiting on a fulfilled promise should throw");
+    
+    OMPromise *failed = [OMPromise promiseWithError:self.error];
+    XCTAssertEqual([failed waitForErrorWithin:10.], self.error, @"Should yield error of failed promise");
+    
+    OMPromise *promise = [OMPromise promiseWithError:self.error after:3.5];
+    XCTAssertThrows([promise waitForErrorWithin:3.], @"Failing not in time should throw");
+    
+    NSDate *tic = [NSDate date];
+    OMPromise *promise2 = [OMPromise promiseWithError:self.error after:3.5];
+    XCTAssertEqual([promise2 waitForErrorWithin:4.], self.error, @"Should yield error of failed promise");
+    XCTAssertEqualWithAccuracy(-tic.timeIntervalSinceNow, 3.5, .15, @"Should be more or less exact in timing");
+}
+
 #pragma clang diagnostics pop
 
 @end

@@ -55,9 +55,9 @@
     
     @synchronized (self) {
         NSAssert(self.state == OMPromiseStateUnfulfilled, @"Can only get fulfilled while being Unfulfilled");
-
-        self.state = OMPromiseStateFulfilled;
+        
         self.result = result;
+        self.state = OMPromiseStateFulfilled;
     }
     
     for (void (^fulfilHandler)(id) in self.fulfilHandlers) {
@@ -70,9 +70,9 @@
 - (void)fail:(NSError *)error {
     @synchronized (self) {
         NSAssert(self.state == OMPromiseStateUnfulfilled, @"Can only fail while being Unfulfilled");
-
-        self.state = OMPromiseStateFailed;
+        
         self.error = error;
+        self.state = OMPromiseStateFailed;
     }
     
     for (void (^failHandler)(NSError *) in self.failHandlers) {
@@ -96,11 +96,46 @@
         
     }
     
-    @synchronized (progressHandlers) {
-        for (void (^progressHandler)(float) in progressHandlers) {
-            progressHandler(progress);
+    if (progressHandlers) {
+        @synchronized (progressHandlers) {
+            for (void (^progressHandler)(float) in progressHandlers) {
+                progressHandler(progress);
+            }
         }
     }
+}
+
+- (BOOL)tryFulfil:(id)result {
+    @synchronized (self) {
+        if (self.state == OMPromiseStateUnfulfilled) {
+            [self fulfil:result];
+            return YES;
+        }
+    }
+
+    return NO;
+}
+
+- (BOOL)tryFail:(NSError *)error {
+    @synchronized (self) {
+        if (self.state == OMPromiseStateUnfulfilled) {
+            [self fail:error];
+            return YES;
+        }
+    }
+
+    return NO;
+}
+
+- (BOOL)tryProgress:(float)progress {
+    @synchronized (self) {
+        if (self.state == OMPromiseStateUnfulfilled && progress > self.progress + FLT_EPSILON) {
+            [self progress:progress];
+            return YES;
+        }
+    }
+
+    return NO;
 }
 
 #pragma mark - Cancellation

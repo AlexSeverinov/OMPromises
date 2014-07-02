@@ -68,12 +68,16 @@ extern NSString *const OMPromisesErrorDomain;
  block has to return a value, either a promise or any other value, which is used to
  determine the outcome of the newly returned promise. If the promise fails the 
  block isn't called and the returned promise fails as well.
-
  If you want to build a chain in case the promise fails, you use rescue:. It's very
  similar to then:, but the supplied block is called in case the promise fails.
  
- To build more complex structures you might use one combinator of chain:initial:,
- all: or any:.
+ To build more complex structures you might use one combinator of join:, chain:initial:,
+ all:, any: or collect:. See the corresponding method documentation for more information.
+ 
+ We have two blocking methods which are designed for testing purposes and should only
+ be used in testing scenarios and not in production code. The methods
+ waitForResultWithin: and waitForErrorWithin: block the current execution until a certain
+ state is reached within a certain interval.
  */
 @interface OMPromise : NSObject
 
@@ -398,6 +402,48 @@ extern NSString *const OMPromisesErrorDomain;
  @return A new promise.
  */
 + (OMPromise *)all:(NSArray *)promises;
+
+/** Collects the outcome of all promises.
+ 
+ Once all promises either failed or got fulfilled, the new promise gets fulfilled
+ with an array containing the outcome of all supplied promises in order.
+ Values of `nil` are replaced with `NSNull.null`.
+ The new promise never fails and its progress is determined by an equal distribution
+ amonst the supplied promises.
+ 
+ @param promises A sequence of promises.
+ @return A new promise yielding an array containing all outcomes in order.
+ */
++ (OMPromise *)collect:(NSArray *)promises;
+
+///---------------------------------------------------------------------------------------
+/// @name Testing
+///---------------------------------------------------------------------------------------
+
+/** Wait for the promise to get fulfilled within a certain interval.
+ 
+ Blocks the current execution until the promise got fulfilled or the time is up,
+ in which case it throws an exception. Throws also an exception when the promise fails.
+ You should use this method only for testing purposes and nothing more.
+ 
+ @param seconds The waiting interval, -1. for infinity.
+ @return The result of the promise.
+ @see waitForErrorWithin:
+ */
+- (id)waitForResultWithin:(NSTimeInterval)seconds;
+
+/** Wait for the promise to fail within a certain interval.
+ 
+ Blocks the current execution until the promise failed or the time is up,
+ in which case it throws an exception. Throws also an exception when the promise gets
+ fulfilled.
+ You should use this method only for testing purposes and nothing more.
+ 
+ @param seconds The waiting interval, -1. for infinity.
+ @return The error of the promise.
+ @see waitForResultWithin:
+ */
+- (NSError *)waitForErrorWithin:(NSTimeInterval)seconds;
 
 @end
 

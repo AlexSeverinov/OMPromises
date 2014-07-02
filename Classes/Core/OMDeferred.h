@@ -43,6 +43,12 @@
  It's important to understand that the OMDeferred/OMPromise is sealed, once its stated
  has been changed by calling fulfil: or fail:. After that calls to progress:, fulfil:
  or fail: result in an exception.
+
+ There are safe variants of the state changing methods namely tryFulfil:, tryFail:
+ and tryProgress:. They will never throw an exception but describe the outcome of
+ the operation by their return values. Although that sounds convenient you should not
+ use them unless it's absolutely necessary. Most of the time you find better ways and
+ structure your code and execution paths better if you use the three main functions.
  */
 @interface OMDeferred : OMPromise
 
@@ -92,6 +98,43 @@
  @param progress Higher progress to set and propagate.
  */
 - (void)progress:(float)progress;
+
+///---------------------------------------------------------------------------------------
+/// @name Safely trying to change state
+///---------------------------------------------------------------------------------------
+
+/** Tries to finalize the deferred by settings its state to OMPromiseStateFulfilled.
+
+ Tries to set the state similar to fulfil: but doesn't throw an exception if the
+ promise is not unfulfilled anymore.
+
+ @param result Result to set and propagate.
+ @return Whether the operation was successful or not.
+ @see fulfil:
+ */
+- (BOOL)tryFulfil:(id)result;
+
+/** Tries to finalize the deferred by settings its state to OMPromiseStateFailed.
+
+ Tries to set the state similar to fail: but doesn't throw an exception if the
+ promise is not unfulfilled anymore.
+
+ @param error Error to set and propagate.
+ @return Whether the operation was successful or not.
+ @see fail:
+ */
+- (BOOL)tryFail:(NSError *)error;
+
+/** Tries to update the progress.
+
+ Tries to update the progress similar to progress:, but doesn't throw an exception
+ if the value is less than the current value or the promise is not unfulfilled anymore.
+
+ @param progress Progress to set and propagate.
+ @return Whether the operation was successful or not.
+ @see progress:
+ */
+- (BOOL)tryProgress:(float)progress;
 
 ///---------------------------------------------------------------------------------------
 /// @name Cancellation

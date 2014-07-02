@@ -40,6 +40,8 @@ typedef NS_ENUM(NSInteger, OMPromiseHandler) {
     OMPromiseHandlerRescue
 };
 
+static const NSTimeInterval kTestingIntervalPrecision = .1;
+
 static dispatch_queue_t globalDefaultQueue = nil;
 
 @interface OMPromise ()
@@ -394,7 +396,7 @@ static dispatch_queue_t globalDefaultQueue = nil;
         for (OMPromise *promise in promises) {
             sum += promise.progress;
         }
-        [deferred progress:(sum / promises.count)];
+        [deferred tryProgress:(sum / promises.count)];
     };
 
     for (NSUInteger i = 0; i < promises.count; ++i) {
@@ -427,6 +429,114 @@ static dispatch_queue_t globalDefaultQueue = nil;
     }
     
     return deferred.promise;
+}
+
++ (OMPromise *)collect:(NSArray *)promises {
+    OMDeferred *deferred = [OMDeferred deferred];
+    
+    NSMutableArray *outcomes = [NSMutableArray arrayWithCapacity:promises.count];
+    __block NSUInteger collected = 0;
+    
+    void (^updateProgress)() = ^{
+        float sum = 0;
+        for (OMPromise *promise in promises) {
+            sum += (promise.state == OMPromiseStateUnfulfilled) ? promise.progress : 1.f;
+        }
+        [deferred tryProgress:(sum / promises.count)];
+    };
+    
+    void (^updateOutcomes)(NSUInteger, id) = ^(NSUInteger idx, id obj) {
+        if (obj != nil) {
+            outcomes[idx] = obj;
+        }
+        
+        if (++collected == promises.count) {
+            [deferred fulfil:outcomes];
+        } else {
+            updateProgress();
+        }
+    };
+    
+    for (NSUInteger i = 0; i < promises.count; ++i) {
+        [outcomes addObject:[NSNull null]];
+        
+        [[[(OMPromise *)promises[i]
+            fulfilled:^(id result) {
+                updateOutcomes(i, result);
+            }]
+            failed:^(NSError *error) {
+                updateOutcomes(i, error);
+            }]
+            progressed:^(float progress) {
+                updateProgress();
+            }];
+    }
+    
+    if (promises.count == 0) {
+        [deferred fulfil:outcomes];
+    }
+    
+    return deferred.promise;
+}
+
+#pragma mark - Testing
+
+- (id)waitForResultWithin:(NSTimeInterval)seconds {
+    NSDate *start = [NSDate date];
+    
+    while (42) {
+        if (self.state == OMPromiseStateFulfilled) {
+            return self.result;
+        }
+        
+        if (self.state == OMPromiseStateFailed) {
+            @throw [NSException exceptionWithName:@"WaitingForFufilledPromise"
+                                           reason:@"The promise failed instead of getting fulfilled."
+                                         userInfo:@{NSUnderlyingErrorKey: self.error}];
+        }
+        
+        NSTimeInterval runtime = -start.timeIntervalSinceNow;
+        
+        if (seconds >= 0. && runtime > seconds) {
+            @throw [NSException exceptionWithName:@"WaitingForFufilledPromise"
+                                           reason:@"The promise didn't get fulfilled in time."
+                                         userInfo:nil];
+        }
+        
+        NSTimeInterval waiting = seconds >= 0. ? MIN(seconds - runtime, kTestingIntervalPrecision) : kTestingIntervalPrecision;
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:waiting]];
+    }
+    
+    return nil;
+}
+
+- (NSError *)waitForErrorWithin:(NSTimeInterval)seconds {
+    NSDate *start = [NSDate date];
+    
+    while (42) {
+        if (self.state == OMPromiseStateFailed) {
+            return self.error;
+        }
+        
+        if (self.state == OMPromiseStateFulfilled) {
+            @throw [NSException exceptionWithName:@"WaitingForFailedPromise"
+                                           reason:@"The promise got fulfilled instead of failing."
+                                         userInfo:nil];
+        }
+        
+        NSTimeInterval runtime = -start.timeIntervalSinceNow;
+        
+        if (seconds >= 0. && runtime > seconds) {
+            @throw [NSException exceptionWithName:@"WaitingForFailedPromise"
+                                           reason:@"The promise didn't fail in time."
+                                         userInfo:nil];
+        }
+        
+        NSTimeInterval waiting = seconds >= 0. ? MIN(seconds - runtime, kTestingIntervalPrecision) : kTestingIntervalPrecision;
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:waiting]];
+    }
+    
+    return nil;
 }
 
 #pragma mark - Private Helper Methods

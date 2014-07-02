@@ -115,6 +115,66 @@
     XCTAssertEqual(called, 2, @"Finally we progress if the change is large enough");
 }
 
+- (void)testTryFulfil {
+    OMDeferred *deferred = [OMDeferred deferred];
+
+    id result = @.1337f;
+    XCTAssertTrue([deferred tryFulfil:result]);
+
+    XCTAssertEqual(deferred.state, OMPromiseStateFulfilled, @"Should be Fulfilled by now");
+    XCTAssertEqual(deferred.result, result, @"There should be the supplied result by now");
+    XCTAssertNil(deferred.error, @"There shouldn't be an error");
+    XCTAssertEqualWithAccuracy(deferred.progress, 1.f, FLT_EPSILON, @"Progress should be 1");
+
+    id result2 = @.1338f;
+    XCTAssertFalse([deferred tryFulfil:result2]);
+
+    XCTAssertEqual(deferred.result, result, @"Result should be unchanged");
+}
+
+- (void)testTryFail {
+    OMDeferred *deferred = [OMDeferred deferred];
+
+    NSError *error = [NSError errorWithDomain:NSPOSIXErrorDomain code:0 userInfo:nil];
+    XCTAssertTrue([deferred tryFail:error]);
+
+    XCTAssertEqual(deferred.state, OMPromiseStateFailed, @"Should be Failed by now");
+    XCTAssertEqual(deferred.error, error, @"There should be the supplied error by now");
+    XCTAssertNil(deferred.result, @"There shouldn't be an result");
+    XCTAssertEqualWithAccuracy(deferred.progress, 0.f, FLT_EPSILON, @"Progress should be unchanged");
+
+    NSError *error2 = [NSError errorWithDomain:NSPOSIXErrorDomain code:1 userInfo:nil];
+    XCTAssertFalse([deferred tryFail:error2]);
+
+    XCTAssertEqual(deferred.error, error, @"Error should be unchanged");
+}
+
+- (void)testTryProgress {
+    OMDeferred *deferred = [OMDeferred deferred];
+
+    XCTAssertTrue([deferred tryProgress:.1f], @"TryProgress should update larger values");
+
+    XCTAssertEqual(deferred.state, OMPromiseStateUnfulfilled, @"Should still be Unfulfilled");
+    XCTAssertNil(deferred.error, @"There shouldn't be a result");
+    XCTAssertNil(deferred.result, @"There shouldn't be an error");
+    XCTAssertEqualWithAccuracy(deferred.progress, .1f, FLT_EPSILON, @"Progress should be .1");
+
+    XCTAssertTrue([deferred tryProgress:.2f], @"TryProgress should update larger values");
+    XCTAssertEqualWithAccuracy(deferred.progress, .2f, FLT_EPSILON, @"Progress should be .2");
+
+    XCTAssertFalse([deferred tryProgress:.2f], @"TryProgress should ignore identical values");
+    XCTAssertFalse([deferred tryProgress:.2f + FLT_EPSILON], @"TryProgress should ignore identical values");
+    XCTAssertFalse([deferred tryProgress:.1f], @"TryProgress should ignore lower values");
+    XCTAssertEqualWithAccuracy(deferred.progress, .2f, FLT_EPSILON, @"Progress should be .2");
+
+    XCTAssertTrue([deferred tryProgress:.2f + 2 * FLT_EPSILON], @"TryProgress should update larger values");
+    XCTAssertEqualWithAccuracy(deferred.progress, .2f + 2 * FLT_EPSILON, FLT_EPSILON, @"Progress should be about .2");
+
+    [deferred fulfil:nil];
+    XCTAssertFalse([deferred tryProgress:1.f], @"TryProgress should do nothing if fulfilled");
+    XCTAssertFalse([deferred tryProgress:.5f], @"TryProgress should do nothing if fulfilled");
+}
+
 - (void)testCancelled {
     OMDeferred *deferred = [OMDeferred deferred];
     OMPromise *promise = deferred.promise;
